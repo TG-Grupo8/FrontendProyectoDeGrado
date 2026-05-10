@@ -1,37 +1,23 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { TopBar } from '../components/TopBar';
 import { EntityTag } from '../components/EntityTag';
 import { Search, ChevronLeft, ChevronRight, Download, Leaf, FlaskConical, Dna, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { graphApi } from '../lib/api';
 
-const plantData = [
-  { plant: 'Curcuma longa',        compound: 'Curcumina',           proteins: ['NF-κB', 'COX-2', 'p53'],    activity: 'Antiinflamatoria',  articles: 3 },
-  { plant: 'Uncaria tomentosa',    compound: 'Alcaloides oxindól.', proteins: ['TNF-α', 'IL-6', 'NF-κB'],   activity: 'Inmunomoduladora',  articles: 2 },
-  { plant: 'Espeletia grandiflora',compound: 'Espeletina',          proteins: ['AChE', 'MAO-B'],             activity: 'Neuroprotectora',   articles: 1, endemic: true },
-  { plant: 'Passiflora incarnata', compound: 'Crisina',             proteins: ['GABA-A', 'GAD67'],           activity: 'Ansiolítica',       articles: 2, endemic: true },
-  { plant: 'Moringa oleifera',     compound: 'Moringina',           proteins: ['PLA2', 'HO-1', '5-LOX'],    activity: 'Antiinflamatoria',  articles: 4 },
-  { plant: 'Calendula officinalis',compound: 'Quercetina',          proteins: ['COX-1', 'COX-2'],           activity: 'Antiinflamatoria',  articles: 2 },
-  { plant: 'Valeriana officinalis',compound: 'Ácido valerénico',    proteins: ['GABA-A', 'SERT'],           activity: 'Ansiolítica',       articles: 3 },
-  { plant: 'Ginkgo biloba',        compound: 'Ginkgolida B',        proteins: ['PAF-R', 'MAO-A', 'MAO-B'], activity: 'Neuroprotectora',   articles: 5 },
-  { plant: 'Camellia sinensis',    compound: 'EGCG',                proteins: ['Nrf2', 'HO-1', 'NF-κB'],   activity: 'Antioxidante',      articles: 6 },
-  { plant: 'Zingiber officinale',  compound: 'Gingerol',            proteins: ['COX-2', 'TNF-α', '5-LOX'], activity: 'Antiinflamatoria',  articles: 3 },
-  { plant: 'Bacopa monnieri',      compound: 'Bacoside A',          proteins: ['AChE', 'BDNF', 'SOD'],     activity: 'Neuroprotectora',   articles: 2 },
-  { plant: 'Hypericum perforatum', compound: 'Hipericina',          proteins: ['SERT', 'DAT', 'NET'],      activity: 'Antidepresiva',     articles: 4 },
-  { plant: 'Echinacea purpurea',   compound: 'Equinacósido',        proteins: ['TNF-α', 'IL-1β', 'IL-6'], activity: 'Inmunomoduladora',  articles: 2 },
-  { plant: 'Rosmarinus officinalis',compound: 'Ácido rosmarínico', proteins: ['AChE', 'COX-2', 'Nrf2'],   activity: 'Antioxidante',      articles: 3 },
-  { plant: 'Silybum marianum',     compound: 'Silibinina',          proteins: ['NF-κB', 'CYP3A4', 'p53'], activity: 'Hepatoprotectora',  articles: 2 },
-];
+interface PlantRow {
+  plant: string;
+  compound: string;
+  proteins: string[];
+  activity: string;
+  articles: number;
+  endemic?: boolean;
+}
 
-const ACTIVITIES = ['Todas', 'Antiinflamatorias', 'Neuroprotectoras', 'Antioxidantes', 'Ansiolíticas', 'Inmunomoduladoras'];
+const ACTIVITIES = ['Todas'];
 const PAGE_SIZE  = 5;
 
-const activityMap: Record<string, string> = {
-  'Antiinflamatorias':  'Antiinflamatoria',
-  'Neuroprotectoras':   'Neuroprotectora',
-  'Antioxidantes':      'Antioxidante',
-  'Ansiolíticas':       'Ansiolítica',
-  'Inmunomoduladoras':  'Inmunomoduladora',
-};
+const activityMap: Record<string, string> = {};
 
 const activityColors: Record<string, { bg: string; text: string; dot: string }> = {
   'Todas':             { bg: '#185FA5', text: '#FFFFFF', dot: '#FFFFFF' },
@@ -42,7 +28,7 @@ const activityColors: Record<string, { bg: string; text: string; dot: string }> 
   'Inmunomoduladoras': { bg: '#EBF3FB', text: '#185FA5', dot: '#185FA5' },
 };
 
-const exportCSV = (data: typeof plantData) => {
+const exportCSV = (data: PlantRow[]) => {
   const header = 'Planta,Compuesto activo,Proteínas blanco,Actividad,Artículos';
   const rows   = data.map(r => `"${r.plant}","${r.compound}","${r.proteins.join('; ')}","${r.activity}",${r.articles}`);
   const blob   = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -51,7 +37,7 @@ const exportCSV = (data: typeof plantData) => {
   URL.revokeObjectURL(url);
 };
 
-const exportJSON = (data: typeof plantData) => {
+const exportJSON = (data: PlantRow[]) => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a'); a.href = url; a.download = 'plantas_medicinales.json'; a.click();
@@ -63,6 +49,22 @@ export function DataExplorer() {
   const [activeFilter, setActiveFilter] = useState('Todas');
   const [searchQuery, setSearchQuery]   = useState('');
   const [currentPage, setCurrentPage]   = useState(1);
+  const [plantData, setPlantData]       = useState<PlantRow[]>([]);
+  const [graphLoaded, setGraphLoaded]   = useState(false);
+
+  useEffect(() => {
+    graphApi.entities('plant', undefined, 100).then(res => {
+      const rows: PlantRow[] = res.items.map(e => ({
+        plant: e.name,
+        compound: '—',
+        proteins: [],
+        activity: '—',
+        articles: 0,
+      }));
+      if (rows.length > 0) setPlantData(rows);
+      setGraphLoaded(true);
+    }).catch(() => setGraphLoaded(true));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();

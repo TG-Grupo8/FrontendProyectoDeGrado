@@ -1,31 +1,60 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TopBar } from '../components/TopBar';
 import { useNavigate } from 'react-router';
 import {
   FileText, CheckCircle, Loader2, UploadCloud,
   Clock, ArrowRight, Sparkles, AlertCircle,
 } from 'lucide-react';
+import { documentsApi, jobsApi, type JobResponse } from '../lib/api';
+import { metricsApi } from '../lib/api';
 
 type ProcessStatus = 'idle' | 'processing' | 'success' | 'error';
-
-const recentFiles = [
-  { name: 'Espeletia_grandiflora_2024.pdf', entities: 14, time: 'hoy',         color: '#1D9E75' },
-  { name: 'Uncaria_tomentosa_alkaloids.pdf', entities: 21, time: 'ayer',        color: '#185FA5' },
-  { name: 'Passiflora_GABA_study.pdf',       entities: 9,  time: 'hace 3 días', color: '#7F77DD' },
-  { name: 'Moringa_anti-inflam.pdf',         entities: 17, time: 'hace 5 días', color: '#BA7517' },
-];
 
 const MAX_SIZE_MB = 10;
 
 export function UploadArticle() {
   const navigate = useNavigate();
   const [uploadedFile, setUploadedFile]   = useState<string | null>(null);
+  const [fileObj, setFileObj]             = useState<File | null>(null);
   const [fileError, setFileError]         = useState<string | null>(null);
   const [dragging, setDragging]           = useState(false);
   const [processStatus, setProcessStatus] = useState<ProcessStatus>('idle');
   const [progress, setProgress]           = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
+  const [currentJobId, setCurrentJobId]   = useState<string | null>(null);
+  const [recentJobs, setRecentJobs]       = useState<JobResponse[]>([]);
+  const [stats, setStats]                 = useState({ docs: 0, entities: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    jobsApi.list(undefined, 4).then(r => setRecentJobs(r.items)).catch(() => {});
+    metricsApi.get().then(m => setStats({
+      docs: m.documents.total,
+      entities: (m.jobs.by_status['APPROVED'] ?? 0),
+    })).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!currentJobId || processStatus !== 'processing') return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await jobsApi.get(currentJobId);
+        setProgress(job.progress);
+        if (job.progress_step) setProgressLabel(job.progress_step);
+        if (job.status === 'READY_FOR_REVIEW' || job.status === 'APPROVED') {
+          clearInterval(pollRef.current!);
+          setProgress(100);
+          setProgressLabel('Completado');
+          setProcessStatus('success');
+        } else if (job.status === 'FAILED') {
+          clearInterval(pollRef.current!);
+          setProcessStatus('error');
+        }
+      } catch { /* network hiccup, keep polling */ }
+    }, 2000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [currentJobId, processStatus]);
 
   const validateFile = (file: File): string | null => {
     if (file.type !== 'application/pdf')
@@ -40,6 +69,7 @@ export function UploadArticle() {
     if (error) { setFileError(error); return; }
     setFileError(null);
     setUploadedFile(file.name);
+    setFileObj(file);
     setProcessStatus('idle');
     setProgress(0);
   };
@@ -58,33 +88,29 @@ export function UploadArticle() {
 
   const handleReset = () => {
     setUploadedFile(null);
+    setFileObj(null);
     setFileError(null);
     setProcessStatus('idle');
     setProgress(0);
     setProgressLabel('');
+    setCurrentJobId(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleProcess = async () => {
-    if (!uploadedFile || processStatus === 'processing') return;
+    if (!fileObj || processStatus === 'processing') return;
     setProcessStatus('processing');
-    setProgress(0);
-
-    const steps = [
-      { pct: 15,  label: 'Extrayendo texto del PDF...' },
-      { pct: 35,  label: 'Tokenizando secciones...' },
-      { pct: 60,  label: 'Ejecutando modelo NER...' },
-      { pct: 80,  label: 'Vinculando entidades...' },
-      { pct: 100, label: 'Completado' },
-    ];
-
-    for (const s of steps) {
-      await new Promise(res => setTimeout(res, 700));
-      setProgress(s.pct);
-      setProgressLabel(s.label);
+    setProgress(5);
+    setProgressLabel('Subiendo archivo...');
+    try {
+      const { job_id } = await documentsApi.upload(fileObj);
+      setCurrentJobId(job_id);
+      setProgress(10);
+      setProgressLabel('Artículo en cola de procesamiento...');
+    } catch (err: unknown) {
+      setProgressLabel(err instanceof Error ? err.message : 'Error al subir');
+      setProcessStatus('error');
     }
-    await new Promise(res => setTimeout(res, 400));
-    setProcessStatus('success');
   };
 
   return (
@@ -261,9 +287,9 @@ export function UploadArticle() {
             {/* Stats row */}
             <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'Artículos procesados',  value: '47',    color: '#185FA5', bg: 'rgba(24,95,165,0.08)'   },
-                { label: 'Entidades extraídas',   value: '1,284', color: '#1D9E75', bg: 'rgba(29,158,117,0.08)'  },
-                { label: 'Plantas identificadas', value: '23',    color: '#7F77DD', bg: 'rgba(127,119,221,0.08)' },
+                { label: 'Artículos procesados',  value: String(stats.docs),     color: '#185FA5', bg: 'rgba(24,95,165,0.08)'   },
+                { label: 'Jobs aprobados',         value: String(stats.entities), color: '#1D9E75', bg: 'rgba(29,158,117,0.08)'  },
+                { label: 'Analizando con NLP',     value: '∞',                   color: '#7F77DD', bg: 'rgba(127,119,221,0.08)' },
               ].map(({ label, value, color, bg }) => (
                 <div key={label} style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #E5E5E3', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
@@ -291,18 +317,18 @@ export function UploadArticle() {
                   Ver todo
                 </span>
               </div>
-              {recentFiles.map((item, idx) => (
+              {recentJobs.map((item, idx) => (
                 <button key={idx} className="w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-[#F9F9F7] transition-colors"
-                  style={{ borderBottom: idx < recentFiles.length - 1 ? '1px solid #F5F5F3' : 'none' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: `${item.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <FileText size={14} color={item.color} />
+                  style={{ borderBottom: idx < recentJobs.length - 1 ? '1px solid #F5F5F3' : 'none' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: 'rgba(29,158,117,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <FileText size={14} color="#1D9E75" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="truncate" style={{ fontSize: '12px', fontWeight: 600, color: '#1A1A1A', marginBottom: '2px' }}>{item.name}</p>
+                    <p className="truncate" style={{ fontSize: '12px', fontWeight: 600, color: '#1A1A1A', marginBottom: '2px' }}>{item.document_id.slice(0, 8)}...</p>
                     <div className="flex items-center gap-1">
-                      <span style={{ fontSize: '10px', color: '#888780' }}>{item.entities} entidades</span>
+                      <span style={{ fontSize: '10px', color: '#888780' }}>{item.status}</span>
                       <span style={{ fontSize: '10px', color: '#D0D0CC' }}>·</span>
-                      <span style={{ fontSize: '10px', color: '#888780' }}>{item.time}</span>
+                      <span style={{ fontSize: '10px', color: '#888780' }}>{new Date(item.created_at).toLocaleDateString('es-CO')}</span>
                     </div>
                   </div>
                   <ArrowRight size={12} color="#D0D0CC" style={{ marginTop: '4px', flexShrink: 0 }} />

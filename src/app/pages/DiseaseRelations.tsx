@@ -1,50 +1,84 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 import { TopBar } from '../components/TopBar';
 import { EntityTag, EntityType } from '../components/EntityTag';
 import { Check, X, ChevronLeft, CheckCircle, Download } from 'lucide-react';
+import { useValidation } from '../context/ValidationContext';
+import { jobsApi } from '../lib/api';
 
 type ValidationState = 'pending' | 'accepted' | 'rejected';
+
+type ConcreteEntityType = 'plant' | 'compound' | 'protein' | 'disease';
 
 interface Relation {
   id: string;
   source: string;
-  sourceType: EntityType;
+  sourceType: ConcreteEntityType;
   relation: string;
   target: string;
-  targetType: EntityType;
+  targetType: ConcreteEntityType;
   confidence: number;
   state: ValidationState;
 }
 
-const initialRelations: Relation[] = [
-  { id: 'd1', source: 'Cáncer', sourceType: 'disease', relation: 'INVOLUCRA', target: 'NF-κB',    targetType: 'protein', confidence: 0.95, state: 'pending' },
-  { id: 'd2', source: 'Cáncer', sourceType: 'disease', relation: 'EXPRESA',   target: 'COX-2',    targetType: 'protein', confidence: 0.91, state: 'pending' },
-  { id: 'd3', source: 'Cáncer', sourceType: 'disease', relation: 'SUPRIME',   target: 'p53',      targetType: 'protein', confidence: 0.94, state: 'pending' },
-];
-
 const relationColors: Record<string, string> = {
-  INVOLUCRA: '#D85A30', EXPRESA: '#7F77DD', SUPRIME: '#993C1D',
+  INVOLUCRA: '#D85A30', EXPRESA: '#7F77DD', SUPRIME: '#993C1D', ASOCIADA: '#BA7517',
 };
 
 export function DiseaseRelations() {
   const navigate = useNavigate();
-  const [relations, setRelations] = useState<Relation[]>(initialRelations);
+  const location = useLocation();
+  const jobId = (location.state as { jobId?: string } | null)?.jobId ?? null;
+  const { diseaseRelations: ctxRelations, setDiseaseRelations, jobId: ctxJobId, buildAcceptedGraph, reset } = useValidation();
+  const [relations, setRelations] = useState<Relation[]>([]);
   const [saved, setSaved]         = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const activeJobId = jobId ?? ctxJobId;
+
+  useEffect(() => {
+    if (ctxRelations.length > 0) setRelations(ctxRelations as Relation[]);
+  }, [ctxRelations]);
 
   const updateState = (id: string, state: ValidationState) => {
-    setRelations(prev => prev.map(r => r.id === id ? { ...r, state } : r));
+    const next = relations.map(r => r.id === id ? { ...r, state } : r);
+    setRelations(next); setDiseaseRelations(next);
   };
 
-  const acceptAll = () => setRelations(prev => prev.map(r => ({ ...r, state: 'accepted' })));
-  const rejectAll = () => setRelations(prev => prev.map(r => ({ ...r, state: 'rejected' })));
+  const acceptAll = () => {
+    const next = relations.map(r => ({ ...r, state: 'accepted' as ValidationState }));
+    setRelations(next); setDiseaseRelations(next);
+  };
+  const rejectAll = () => {
+    const next = relations.map(r => ({ ...r, state: 'rejected' as ValidationState }));
+    setRelations(next); setDiseaseRelations(next);
+  };
 
   const accepted = relations.filter(r => r.state === 'accepted').length;
   const rejected = relations.filter(r => r.state === 'rejected').length;
   const pending  = relations.filter(r => r.state === 'pending').length;
   const allDone  = pending === 0;
 
-  const handleSave = () => setSaved(true);
+  const handleSave = async () => {
+    if (!activeJobId) { setSaveError('No se encontró el ID del job.'); return; }
+    setSaving(true);
+    setSaveError('');
+    try {
+      const graph = buildAcceptedGraph();
+      if (!graph.plants.length) {
+        await jobsApi.reject(activeJobId, 'Sin plantas aceptadas en la validación');
+      } else {
+        await jobsApi.validate(activeJobId, graph);
+      }
+      reset();
+      setSaved(true);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -159,7 +193,8 @@ export function DiseaseRelations() {
 
           {/* Navegación */}
           <div className="flex items-center justify-between">
-            <button onClick={() => navigate('/app/nlp-results/compound-relations')}
+            {saveError && <p style={{ fontSize: '12px', color: '#D85A30' }}>⚠ {saveError}</p>}
+            <button onClick={() => navigate('/app/nlp-results/compound-relations', { state: { jobId: activeJobId } })}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', backgroundColor: '#FFFFFF', color: '#444441', border: '1px solid #D0D0CC', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
               <ChevronLeft size={15} /> Volver
             </button>
@@ -169,9 +204,9 @@ export function DiseaseRelations() {
                 {!allDone && <span style={{ fontSize: '12px', color: '#888780' }}>{pending} relaciones sin revisar</span>}
                 <button
                   onClick={handleSave}
-                  disabled={!allDone}
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', backgroundColor: allDone ? '#1D9E75' : '#D0D0CC', color: '#FFFFFF', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: allDone ? 'pointer' : 'not-allowed' }}>
-                  <CheckCircle size={15} /> Guardar y finalizar
+                  disabled={!allDone || saving}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', backgroundColor: allDone && !saving ? '#1D9E75' : '#D0D0CC', color: '#FFFFFF', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: allDone && !saving ? 'pointer' : 'not-allowed' }}>
+                  <CheckCircle size={15} /> {saving ? 'Guardando...' : 'Guardar y finalizar'}
                 </button>
               </div>
             ) : (

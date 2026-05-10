@@ -1,20 +1,31 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Eye, EyeOff, Leaf, Check } from 'lucide-react';
+import { authApi } from '../lib/api';
 
 export function Register() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [agreed, setAgreed] = useState(false);
+  const [error, setError]   = useState('');
+  const [loading, setLoading] = useState(false);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(prev => ({ ...prev, [k]: e.target.value }));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // lógica de registro
-    navigate('/upload');
+    setLoading(true);
+    setError('');
+    try {
+      await authApi.register(form.name, form.email, form.password);
+      navigate('/login');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al crear la cuenta');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const passwordStrength =
@@ -226,21 +237,27 @@ export function Register() {
               </p>
             </div>
 
+            {error && (
+              <p style={{ fontSize: '12px', color: '#D85A30', backgroundColor: '#FAECE7', padding: '8px 12px', borderRadius: '6px' }}>
+                ⚠ {error}
+              </p>
+            )}
+
             {/* Submit */}
             <button
               type="submit"
-              disabled={!agreed}
+              disabled={!agreed || loading}
               style={{
                 width: '100%', padding: '11px',
-                backgroundColor: agreed ? '#185FA5' : '#D0D0CC',
+                backgroundColor: agreed && !loading ? '#185FA5' : '#D0D0CC',
                 color: '#FFFFFF', border: 'none', borderRadius: '8px',
                 fontSize: '13px', fontWeight: 600,
-                cursor: agreed ? 'pointer' : 'not-allowed',
+                cursor: agreed && !loading ? 'pointer' : 'not-allowed',
                 transition: 'background-color 0.15s',
                 marginTop: '4px',
               }}
             >
-              Crear cuenta
+              {loading ? 'Creando cuenta...' : 'Crear cuenta'}
             </button>
           </form>
 

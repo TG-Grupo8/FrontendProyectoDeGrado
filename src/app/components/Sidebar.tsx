@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router';
 import { Leaf } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface NavItemProps {
   to: string;
@@ -31,6 +32,13 @@ function NavItem({ to, dotColor, label }: NavItemProps) {
 
 export function Sidebar() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const initials = user?.name
+    ? user.name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+    : 'PM';
+
+  const handleLogout = () => { logout(); navigate('/login'); };
 
   return (
     <div
@@ -112,11 +120,13 @@ export function Sidebar() {
             fontWeight: 600,
           }}
         >
-          PM
+          {initials}
         </div>
-        <div style={{ fontSize: '12px', color: '#1A1A1A', flex: 1 }}>Usuario</div>
+        <div style={{ fontSize: '12px', color: '#1A1A1A', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {user?.name ?? 'Usuario'}
+        </div>
         <button
-          onClick={() => navigate('/login')}
+          onClick={handleLogout}
           title="Cerrar sesión"
           style={{
             background: 'none',

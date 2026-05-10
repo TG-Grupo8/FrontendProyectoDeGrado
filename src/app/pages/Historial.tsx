@@ -1,23 +1,30 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { TopBar } from '../components/TopBar';
 import { useNavigate } from 'react-router';
 import {
   FileText, Search, CheckCircle, Clock, AlertCircle,
   ArrowRight, Download, Trash2, Filter,
 } from 'lucide-react';
+import { jobsApi, documentsApi, type JobResponse, type DocumentResponse } from '../lib/api';
 
 type Status = 'completado' | 'procesando' | 'error';
 
-const historialData = [
-  { id: '001', name: 'Espeletia_grandiflora_2024.pdf',   title: 'Neuroprotective effects of Espeletia grandiflora', date: '2025-05-07', entities: 14, relations: 6,  status: 'completado' as Status, size: '2.1 MB' },
-  { id: '002', name: 'Uncaria_tomentosa_alkaloids.pdf',  title: 'Alkaloid profile of Uncaria tomentosa extracts',   date: '2025-05-06', entities: 21, relations: 9,  status: 'completado' as Status, size: '3.4 MB' },
-  { id: '003', name: 'Passiflora_GABA_study.pdf',        title: 'GABA modulation by Passiflora incarnata',          date: '2025-05-04', entities: 9,  relations: 4,  status: 'completado' as Status, size: '1.8 MB' },
-  { id: '004', name: 'Moringa_anti-inflam.pdf',          title: 'Anti-inflammatory properties of Moringa oleifera', date: '2025-05-02', entities: 17, relations: 8,  status: 'completado' as Status, size: '2.7 MB' },
-  { id: '005', name: 'Curcuma_NF-kB_pathway.pdf',        title: 'Curcumin inhibition of NF-κB signaling',          date: '2025-04-30', entities: 22, relations: 11, status: 'completado' as Status, size: '4.1 MB' },
-  { id: '006', name: 'Ginkgo_biloba_memory.pdf',         title: 'Cognitive effects of Ginkgo biloba extract',       date: '2025-04-28', entities: 18, relations: 7,  status: 'completado' as Status, size: '3.0 MB' },
-  { id: '007', name: 'Camellia_EGCG_antioxidant.pdf',    title: 'Antioxidant mechanisms of EGCG in green tea',      date: '2025-04-25', entities: 13, relations: 5,  status: 'error'      as Status, size: '2.2 MB' },
-  { id: '008', name: 'Valeriana_sleep_disorders.pdf',    title: 'Valeriana officinalis in sleep disorder treatment', date: '2025-04-22', entities: 0,  relations: 0,  status: 'procesando' as Status, size: '1.5 MB' },
-];
+interface HistorialItem {
+  id: string;
+  name: string;
+  title: string;
+  date: string;
+  entities: number;
+  relations: number;
+  status: Status;
+  size: string;
+  jobId: string;
+}
+
+const jobStatusToLocal = (s: string): Status =>
+  s === 'APPROVED' ? 'completado'
+  : s === 'FAILED' || s === 'REJECTED' ? 'error'
+  : 'procesando';
 
 const statusConfig: Record<Status, { label: string; icon: React.ReactNode; bg: string; text: string }> = {
   completado: { label: 'Completado', icon: <CheckCircle size={12} />, bg: '#E1F5EE', text: '#085041' },
@@ -27,9 +34,35 @@ const statusConfig: Record<Status, { label: string; icon: React.ReactNode; bg: s
 
 export function Historial() {
   const navigate = useNavigate();
-  const [search, setSearch]     = useState('');
-  const [filter, setFilter]     = useState<'todos' | Status>('todos');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch]         = useState('');
+  const [filter, setFilter]         = useState<'todos' | Status>('todos');
+  const [selected, setSelected]     = useState<Set<string>>(new Set());
+  const [historialData, setHistorial] = useState<HistorialItem[]>([]);
+  const [loading, setLoading]       = useState(true);
+
+  useEffect(() => {
+    Promise.all([jobsApi.list(undefined, 100), documentsApi.list(100)])
+      .then(([jobs, docs]) => {
+        const docMap: Record<string, DocumentResponse> = {};
+        docs.items.forEach(d => { docMap[d.id] = d; });
+        setHistorial(jobs.items.map(j => {
+          const doc = docMap[j.document_id];
+          return {
+            id: j.id,
+            jobId: j.id,
+            name: doc?.filename ?? j.document_id.slice(0, 8),
+            title: doc?.title ?? doc?.filename ?? 'Sin título',
+            date: j.created_at.slice(0, 10),
+            entities: 0,
+            relations: 0,
+            status: jobStatusToLocal(j.status),
+            size: '—',
+          };
+        }));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -38,7 +71,7 @@ export function Historial() {
       const matchSearch = !q || item.name.toLowerCase().includes(q) || item.title.toLowerCase().includes(q);
       return matchStatus && matchSearch;
     });
-  }, [search, filter]);
+  }, [search, filter, historialData]);
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
