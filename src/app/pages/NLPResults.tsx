@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { TopBar } from '../components/TopBar';
 import {
   FileText, CheckCircle, Clock, ArrowRight,
   Search, Dna, FlaskConical, AlertCircle,
 } from 'lucide-react';
+import { jobsApi, documentsApi, type JobResponse, type DocumentResponse } from '../lib/api';
 
 type FileStatus = 'pendiente' | 'procesado';
 
@@ -18,14 +19,6 @@ interface ArchivoItem {
   relations?: number;
 }
 
-const archivos: ArchivoItem[] = [
-  { id: '1', name: 'Espeletia_grandiflora_2024.pdf',  title: 'Neuroprotective effects of Espeletia grandiflora', date: '2025-05-07', status: 'pendiente',  entities: 14, relations: 6  },
-  { id: '2', name: 'Uncaria_tomentosa_alkaloids.pdf', title: 'Alkaloid profile of Uncaria tomentosa extracts',   date: '2025-05-06', status: 'pendiente',  entities: 21, relations: 9  },
-  { id: '3', name: 'Passiflora_GABA_study.pdf',       title: 'GABA modulation by Passiflora incarnata',          date: '2025-05-04', status: 'procesado',  entities: 9,  relations: 4  },
-  { id: '4', name: 'Moringa_anti-inflam.pdf',         title: 'Anti-inflammatory properties of Moringa oleifera', date: '2025-05-02', status: 'procesado',  entities: 17, relations: 8  },
-  { id: '5', name: 'Curcuma_NF-kB_pathway.pdf',       title: 'Curcumin inhibition of NF-κB signaling',          date: '2025-04-30', status: 'pendiente',  entities: 22, relations: 11 },
-];
-
 const statusConfig: Record<FileStatus, { label: string; icon: React.ReactNode; bg: string; text: string; border: string }> = {
   pendiente: { label: 'Pendiente de validar', icon: <Clock size={12} />,        bg: '#FEF3DC', text: '#BA7517', border: '#F5DFA0' },
   procesado: { label: 'Validado',             icon: <CheckCircle size={12} />,  bg: '#E1F5EE', text: '#085041', border: '#A8E6CF' },
@@ -35,6 +28,36 @@ export function NLPResults() {
   const navigate  = useNavigate();
   const [search, setSearch]   = useState('');
   const [filter, setFilter]   = useState<'todos' | FileStatus>('todos');
+  const [archivos, setArchivos] = useState<ArchivoItem[]>([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      jobsApi.list('READY_FOR_REVIEW', 50),
+      jobsApi.list('APPROVED', 50),
+      documentsApi.list(100),
+    ]).then(([pending, approved, docs]) => {
+      const docMap: Record<string, DocumentResponse> = {};
+      docs.items.forEach(d => { docMap[d.id] = d; });
+
+      const toItem = (j: JobResponse, status: FileStatus): ArchivoItem => {
+        const doc = docMap[j.document_id];
+        return {
+          id: j.id,
+          name: doc?.filename ?? j.document_id.slice(0, 8),
+          title: doc?.title ?? doc?.filename ?? 'Sin título',
+          date: j.created_at.slice(0, 10),
+          status,
+        };
+      };
+
+      setArchivos([
+        ...pending.items.map(j => toItem(j, 'pendiente')),
+        ...approved.items.map(j => toItem(j, 'procesado')),
+      ]);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
 
   const filtered = archivos.filter(a => {
     const matchFilter = filter === 'todos' || a.status === filter;
@@ -58,6 +81,7 @@ export function NLPResults() {
         <div className="max-w-[900px] mx-auto flex flex-col gap-5">
 
           {/* Stats */}
+          {loading && <p style={{ color: '#888780', fontSize: '13px', textAlign: 'center' }}>Cargando resultados...</p>}
           <div className="grid grid-cols-3 gap-4">
             {[
               { label: 'Total archivos',       value: archivos.length, color: '#185FA5', bg: 'rgba(24,95,165,0.08)'  },
@@ -120,7 +144,7 @@ export function NLPResults() {
               return (
                 <div
                   key={archivo.id}
-                  onClick={() => navigate('/app/nlp-results/entities')}
+                  onClick={() => navigate('/app/nlp-results/entities', { state: { jobId: archivo.id } })}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '16px',
                     padding: '16px 20px', cursor: 'pointer',

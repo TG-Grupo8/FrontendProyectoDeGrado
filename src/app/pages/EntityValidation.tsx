@@ -1,37 +1,25 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 import { TopBar } from '../components/TopBar';
 import { EntityTag, EntityType } from '../components/EntityTag';
 import { Check, X, ArrowRight, ChevronLeft } from 'lucide-react';
+import { jobsApi } from '../lib/api';
+import { useValidation } from '../context/ValidationContext';
 
 type ValidationState = 'pending' | 'accepted' | 'rejected';
+
+type ConcreteEntityType = 'plant' | 'compound' | 'protein' | 'disease';
 
 interface Entity {
   id: string;
   name: string;
-  type: EntityType;
+  type: ConcreteEntityType;
   count: number;
   state: ValidationState;
 }
 
-const initialEntities: Entity[] = [
-  // Compuestos
-  { id: 'e1', name: 'Curcumin',   type: 'compound', count: 2, state: 'pending' },
-  { id: 'e2', name: 'Curcuminoid',type: 'compound', count: 1, state: 'pending' },
-  // Proteínas
-  { id: 'e3', name: 'NF-κB',      type: 'protein',  count: 3, state: 'pending' },
-  { id: 'e4', name: 'COX-2',      type: 'protein',  count: 2, state: 'pending' },
-  { id: 'e5', name: 'iNOS',       type: 'protein',  count: 1, state: 'pending' },
-  { id: 'e6', name: 'p53',        type: 'protein',  count: 1, state: 'pending' },
-  { id: 'e7', name: 'caspase-3',  type: 'protein',  count: 1, state: 'pending' },
-  { id: 'e8', name: 'VEGF',       type: 'protein',  count: 1, state: 'pending' },
-  { id: 'e9', name: 'TNF-α',      type: 'protein',  count: 2, state: 'pending' },
-  { id: 'e10',name: 'IL-6',       type: 'protein',  count: 1, state: 'pending' },
-  // Enfermedades
-  { id: 'e11',name: 'Cáncer',     type: 'disease',  count: 2, state: 'pending' },
-];
-
-const groups: { type: EntityType; label: string; color: string }[] = [
+const groups: { type: ConcreteEntityType; label: string; color: string }[] = [
+  { type: 'plant',    label: 'Plantas',     color: '#1D9E75' },
   { type: 'compound', label: 'Compuestos',  color: '#BA7517' },
   { type: 'protein',  label: 'Proteínas',   color: '#7F77DD' },
   { type: 'disease',  label: 'Enfermedades',color: '#D85A30' },
@@ -39,18 +27,45 @@ const groups: { type: EntityType; label: string; color: string }[] = [
 
 export function EntityValidation() {
   const navigate = useNavigate();
-  const [entities, setEntities] = useState<Entity[]>(initialEntities);
+  const location = useLocation();
+  const jobId = (location.state as { jobId?: string } | null)?.jobId ?? null;
+  const { loadFromPayload, entities: ctxEntities, setEntities: setCtxEntities, setJobId } = useValidation();
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    if (!jobId) { setLoadError('No se especificó un job. Vuelve a Resultados NLP.'); return; }
+    setJobId(jobId);
+    jobsApi.result(jobId).then(r => {
+      if (r.preliminary_result) {
+        loadFromPayload(jobId, r.preliminary_result);
+      } else {
+        setLoadError('Este job no tiene resultado preliminar disponible.');
+      }
+    }).catch(() => setLoadError('Error al cargar el resultado del job.'));
+  }, [jobId]);
+
+  useEffect(() => {
+    if (ctxEntities.length > 0) {
+      setEntities(ctxEntities.map(e => ({ id: e.id, name: e.name, type: e.type, count: 1, state: e.state })));
+    }
+  }, [ctxEntities]);
 
   const updateState = (id: string, state: ValidationState) => {
     setEntities(prev => prev.map(e => e.id === id ? { ...e, state } : e));
+    setCtxEntities(entities.map(e => e.id === id ? { ...e, state } : e));
   };
 
-  const acceptAll = (type: EntityType) => {
-    setEntities(prev => prev.map(e => e.type === type ? { ...e, state: 'accepted' } : e));
+  const acceptAll = (type: ConcreteEntityType) => {
+    const next = entities.map(e => e.type === type ? { ...e, state: 'accepted' as ValidationState } : e);
+    setEntities(next);
+    setCtxEntities(next);
   };
 
-  const rejectAll = (type: EntityType) => {
-    setEntities(prev => prev.map(e => e.type === type ? { ...e, state: 'rejected' } : e));
+  const rejectAll = (type: ConcreteEntityType) => {
+    const next = entities.map(e => e.type === type ? { ...e, state: 'rejected' as ValidationState } : e);
+    setEntities(next);
+    setCtxEntities(next);
   };
 
   const accepted = entities.filter(e => e.state === 'accepted').length;
@@ -63,6 +78,18 @@ export function EntityValidation() {
     accepted: { bg: '#F0FBF7',  border: '#C8EDE1' },
     rejected: { bg: '#FDF2EF',  border: '#F5C9BB' },
   };
+
+  if (loadError) return (
+    <div className="flex-1 p-6 flex items-center justify-center" style={{ backgroundColor: '#F4F4F2' }}>
+      <p style={{ color: '#D85A30', fontSize: '13px' }}>⚠ {loadError}</p>
+    </div>
+  );
+
+  if (entities.length === 0) return (
+    <div className="flex-1 p-6 flex items-center justify-center" style={{ backgroundColor: '#F4F4F2' }}>
+      <p style={{ color: '#888780', fontSize: '13px' }}>Cargando entidades...</p>
+    </div>
+  );
 
   return (
     <>
@@ -196,7 +223,7 @@ export function EntityValidation() {
                 <span style={{ fontSize: '12px', color: '#888780' }}>{pending} entidades sin revisar</span>
               )}
               <button
-                onClick={() => navigate('/app/nlp-results/compound-relations')}
+                onClick={() => navigate('/app/nlp-results/compound-relations', { state: { jobId } })}
                 disabled={!allDone}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px',

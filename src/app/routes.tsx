@@ -1,3 +1,4 @@
+import React from "react";
 import { createBrowserRouter, Navigate } from "react-router";
 import { Layout }               from "./components/Layout";
 import { Login }                from "./pages/Login";
@@ -10,6 +11,14 @@ import { DiseaseRelations }     from "./pages/DiseaseRelations";
 import { DataExplorer }         from "./pages/DataExplorer";
 import { KnowledgeGraph }       from "./pages/KnowledgeGraph";
 import { Historial }            from "./pages/Historial";
+import { useAuth }              from "./context/AuthContext";
+
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
 
 export const router = createBrowserRouter([
   { path: "/", element: <Navigate to="/login" replace /> },
@@ -17,7 +26,7 @@ export const router = createBrowserRouter([
   { path: "/register", Component: Register },
   {
     path: "/app",
-    Component: Layout,
+    element: <RequireAuth><Layout /></RequireAuth>,
     children: [
       { index: true,                              Component: UploadArticle     },
       { path: "nlp-results",                      Component: NLPResults        },

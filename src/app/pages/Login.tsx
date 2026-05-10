@@ -1,20 +1,28 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Eye, EyeOff, Leaf } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email === 'demo@phytominer.co' && password === 'demo1234') {
+    setLoading(true);
+    setError('');
+    try {
+      await login(email, password);
       navigate('/app');
-    } else {
+    } catch {
       setError('Correo o contraseña incorrectos');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -182,18 +190,19 @@ export function Login() {
             {/* Submit */}
             <button
               type="submit"
+              disabled={loading}
               style={{
                 width: '100%', padding: '11px',
-                backgroundColor: '#185FA5', color: '#FFFFFF',
+                backgroundColor: loading ? '#8CAFD4' : '#185FA5', color: '#FFFFFF',
                 border: 'none', borderRadius: '8px',
                 fontSize: '13px', fontWeight: 600,
-                cursor: 'pointer', marginTop: '4px',
+                cursor: loading ? 'not-allowed' : 'pointer', marginTop: '4px',
                 transition: 'opacity 0.15s',
               }}
-              onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+              onMouseEnter={e => { if (!loading) e.currentTarget.style.opacity = '0.9'; }}
               onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
             >
-              Iniciar sesión
+              {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
             </button>
 
             {/* Divider */}

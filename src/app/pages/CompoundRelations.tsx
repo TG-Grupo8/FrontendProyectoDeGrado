@@ -1,30 +1,24 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 import { TopBar } from '../components/TopBar';
 import { EntityTag, EntityType } from '../components/EntityTag';
 import { Check, X, ArrowRight, ChevronLeft } from 'lucide-react';
+import { useValidation } from '../context/ValidationContext';
 
 type ValidationState = 'pending' | 'accepted' | 'rejected';
+
+type ConcreteEntityType = 'plant' | 'compound' | 'protein' | 'disease';
 
 interface Relation {
   id: string;
   source: string;
-  sourceType: EntityType;
+  sourceType: ConcreteEntityType;
   relation: string;
   target: string;
-  targetType: EntityType;
+  targetType: ConcreteEntityType;
   confidence: number;
   state: ValidationState;
 }
-
-const initialRelations: Relation[] = [
-  { id: 'r1', source: 'Curcumin', sourceType: 'compound', relation: 'INHIBE',     target: 'NF-κB',    targetType: 'protein', confidence: 0.97, state: 'pending' },
-  { id: 'r2', source: 'Curcumin', sourceType: 'compound', relation: 'SUPRIME',    target: 'COX-2',    targetType: 'protein', confidence: 0.95, state: 'pending' },
-  { id: 'r3', source: 'Curcumin', sourceType: 'compound', relation: 'SUPRIME',    target: 'iNOS',     targetType: 'protein', confidence: 0.91, state: 'pending' },
-  { id: 'r4', source: 'Curcumin', sourceType: 'compound', relation: 'MODULA',     target: 'p53',      targetType: 'protein', confidence: 0.93, state: 'pending' },
-  { id: 'r5', source: 'Curcumin', sourceType: 'compound', relation: 'ACTIVA',     target: 'caspase-3',targetType: 'protein', confidence: 0.90, state: 'pending' },
-  { id: 'r6', source: 'Curcumin', sourceType: 'compound', relation: 'INTERACTÚA', target: 'VEGF',     targetType: 'protein', confidence: 0.88, state: 'pending' },
-];
 
 const relationColors: Record<string, string> = {
   INHIBE: '#D85A30', SUPRIME: '#993C1D', MODULA: '#185FA5', ACTIVA: '#1D9E75', 'INTERACTÚA': '#7F77DD',
@@ -32,14 +26,29 @@ const relationColors: Record<string, string> = {
 
 export function CompoundRelations() {
   const navigate = useNavigate();
-  const [relations, setRelations] = useState<Relation[]>(initialRelations);
+  const location = useLocation();
+  const jobId = (location.state as { jobId?: string } | null)?.jobId ?? null;
+  const { compoundRelations: ctxRelations, setCompoundRelations } = useValidation();
+  const [relations, setRelations] = useState<Relation[]>([]);
+
+  useEffect(() => {
+    if (ctxRelations.length > 0) setRelations(ctxRelations as Relation[]);
+  }, [ctxRelations]);
 
   const updateState = (id: string, state: ValidationState) => {
-    setRelations(prev => prev.map(r => r.id === id ? { ...r, state } : r));
+    const next = relations.map(r => r.id === id ? { ...r, state } : r);
+    setRelations(next);
+    setCompoundRelations(next);
   };
 
-  const acceptAll = () => setRelations(prev => prev.map(r => ({ ...r, state: 'accepted' })));
-  const rejectAll = () => setRelations(prev => prev.map(r => ({ ...r, state: 'rejected' })));
+  const acceptAll = () => {
+    const next = relations.map(r => ({ ...r, state: 'accepted' as ValidationState }));
+    setRelations(next); setCompoundRelations(next);
+  };
+  const rejectAll = () => {
+    const next = relations.map(r => ({ ...r, state: 'rejected' as ValidationState }));
+    setRelations(next); setCompoundRelations(next);
+  };
 
   const accepted = relations.filter(r => r.state === 'accepted').length;
   const rejected = relations.filter(r => r.state === 'rejected').length;
@@ -147,14 +156,14 @@ export function CompoundRelations() {
 
           {/* Navegación */}
           <div className="flex items-center justify-between">
-            <button onClick={() => navigate('/app/nlp-results/entities')}
+            <button onClick={() => navigate('/app/nlp-results/entities', { state: { jobId } })}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', backgroundColor: '#FFFFFF', color: '#444441', border: '1px solid #D0D0CC', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
               <ChevronLeft size={15} /> Volver
             </button>
             <div className="flex items-center gap-3">
               {!allDone && <span style={{ fontSize: '12px', color: '#888780' }}>{pending} relaciones sin revisar</span>}
               <button
-                onClick={() => navigate('/app/nlp-results/disease-relations')}
+                onClick={() => navigate('/app/nlp-results/disease-relations', { state: { jobId } })}
                 disabled={!allDone}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px', backgroundColor: allDone ? '#185FA5' : '#D0D0CC', color: '#FFFFFF', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: 600, cursor: allDone ? 'pointer' : 'not-allowed' }}>
                 Siguiente: Relaciones Enfermedad → Proteína <ArrowRight size={15} />
