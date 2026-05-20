@@ -14,9 +14,12 @@ interface Entity {
   id: string;
   name: string;
   type: ConcreteEntityType;
+  score?: number;
   count: number;
   state: ValidationState;
 }
+
+type ScoreFilterType = Exclude<ConcreteEntityType, 'plant'>;
 
 const groups: { type: ConcreteEntityType; label: string; color: string }[] = [
   { type: 'plant',    label: 'Plantas',     color: '#1D9E75' },
@@ -32,6 +35,11 @@ export function EntityValidation() {
   const { loadFromPayload, entities: ctxEntities, setEntities: setCtxEntities, setJobId } = useValidation();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loadError, setLoadError] = useState('');
+  const [scoreFilters, setScoreFilters] = useState<Record<ScoreFilterType, number>>({
+    compound: 0,
+    protein: 0,
+    disease: 0,
+  });
 
   useEffect(() => {
     if (!jobId) { setLoadError('No se especificó un job. Vuelve a Resultados NLP.'); return; }
@@ -47,31 +55,40 @@ export function EntityValidation() {
 
   useEffect(() => {
     if (ctxEntities.length > 0) {
-      setEntities(ctxEntities.map(e => ({ id: e.id, name: e.name, type: e.type, count: 1, state: e.state })));
+      setEntities(ctxEntities.map(e => ({ id: e.id, name: e.name, type: e.type, score: e.score, count: 1, state: e.state })));
     }
   }, [ctxEntities]);
 
+  const isVisibleByScore = (entity: Entity) => (
+    entity.type === 'plant' || (entity.score ?? 1) >= scoreFilters[entity.type]
+  );
+
+  const visibleEntities = entities.filter(isVisibleByScore);
+
   const updateState = (id: string, state: ValidationState) => {
-    setEntities(prev => prev.map(e => e.id === id ? { ...e, state } : e));
-    setCtxEntities(entities.map(e => e.id === id ? { ...e, state } : e));
+    const next = entities.map(e => e.id === id ? { ...e, state } : e);
+    setEntities(next);
+    setCtxEntities(next);
   };
 
   const acceptAll = (type: ConcreteEntityType) => {
-    const next = entities.map(e => e.type === type ? { ...e, state: 'accepted' as ValidationState } : e);
+    const next = entities.map(e => e.type === type && isVisibleByScore(e) ? { ...e, state: 'accepted' as ValidationState } : e);
     setEntities(next);
     setCtxEntities(next);
   };
 
   const rejectAll = (type: ConcreteEntityType) => {
-    const next = entities.map(e => e.type === type ? { ...e, state: 'rejected' as ValidationState } : e);
+    const next = entities.map(e => e.type === type && isVisibleByScore(e) ? { ...e, state: 'rejected' as ValidationState } : e);
     setEntities(next);
     setCtxEntities(next);
   };
 
-  const accepted = entities.filter(e => e.state === 'accepted').length;
-  const rejected = entities.filter(e => e.state === 'rejected').length;
-  const pending  = entities.filter(e => e.state === 'pending').length;
+  const accepted = visibleEntities.filter(e => e.state === 'accepted').length;
+  const rejected = visibleEntities.filter(e => e.state === 'rejected').length;
+  const pending  = visibleEntities.filter(e => e.state === 'pending').length;
   const allDone  = pending === 0;
+  const totalVisible = visibleEntities.length;
+  const reviewedVisible = totalVisible - pending;
 
   const stateStyles: Record<ValidationState, { bg: string; border: string }> = {
     pending:  { bg: '#FAFAFA',  border: '#E5E5E3' },
@@ -112,28 +129,52 @@ export function EntityValidation() {
                 <span style={{ fontSize: '12px', color: '#888780' }}>⏳ {pending} pendientes</span>
               </div>
               <span style={{ fontSize: '11px', color: '#888780' }}>
-                {entities.length - pending} de {entities.length} revisadas
+                {reviewedVisible} de {totalVisible} revisadas
               </span>
             </div>
             <div style={{ width: '100%', height: '6px', borderRadius: '6px', backgroundColor: '#F0F0EE', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${((entities.length - pending) / entities.length) * 100}%`, backgroundColor: '#1D9E75', borderRadius: '6px', transition: 'width 0.3s ease' }} />
+              <div style={{ height: '100%', width: `${totalVisible ? (reviewedVisible / totalVisible) * 100 : 0}%`, backgroundColor: '#1D9E75', borderRadius: '6px', transition: 'width 0.3s ease' }} />
             </div>
           </div>
 
           {/* Grupos por tipo */}
           {groups.map(group => {
-            const groupEntities = entities.filter(e => e.type === group.type);
+            const allGroupEntities = entities.filter(e => e.type === group.type);
+            const groupEntities = allGroupEntities.filter(isVisibleByScore);
+            const hasScoreFilter = group.type !== 'plant';
+            const filterType = group.type as ScoreFilterType;
             return (
               <div key={group.type} style={{ backgroundColor: '#FFFFFF', borderRadius: '14px', border: '1px solid #E5E5E3', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
 
                 {/* Header del grupo */}
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid #F0F0EE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FAFAFA' }}>
+                <div style={{ padding: '14px 20px', borderBottom: '1px solid #F0F0EE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', backgroundColor: '#FAFAFA' }}>
                   <div className="flex items-center gap-2">
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: group.color }} />
                     <h3 style={{ fontSize: '13px', fontWeight: 700, color: '#1A1A1A' }}>{group.label}</h3>
-                    <span style={{ fontSize: '11px', color: '#888780' }}>({groupEntities.length})</span>
+                    <span style={{ fontSize: '11px', color: '#888780' }}>
+                      ({hasScoreFilter ? `${groupEntities.length}/${allGroupEntities.length}` : groupEntities.length})
+                    </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-3">
+                    {hasScoreFilter && (
+                      <div className="flex items-center gap-2">
+                        <label style={{ fontSize: '11px', color: '#666660', whiteSpace: 'nowrap' }}>
+                          Score min. {Math.round(scoreFilters[filterType] * 100)}%
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={scoreFilters[filterType]}
+                          onChange={(event) => setScoreFilters(prev => ({
+                            ...prev,
+                            [filterType]: Number(event.target.value),
+                          }))}
+                          style={{ width: '120px', accentColor: group.color }}
+                        />
+                      </div>
+                    )}
                     <button onClick={() => acceptAll(group.type)}
                       style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', backgroundColor: '#E1F5EE', color: '#085041', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
                       <Check size={11} /> Aceptar todos
@@ -147,6 +188,11 @@ export function EntityValidation() {
 
                 {/* Entidades */}
                 <div className="flex flex-col">
+                  {groupEntities.length === 0 && (
+                    <div style={{ padding: '14px 20px', fontSize: '12px', color: '#888780' }}>
+                      No hay entidades visibles con el score minimo actual.
+                    </div>
+                  )}
                   {groupEntities.map((entity, idx) => {
                     const style = stateStyles[entity.state];
                     return (
@@ -194,6 +240,11 @@ export function EntityValidation() {
                           </span>
                           <EntityTag type={entity.type} label={entity.type} size="sm" showDot={false} />
                           <span style={{ fontSize: '11px', color: '#AAAAAA' }}>{entity.count}x en el texto</span>
+                          {entity.score !== undefined && (
+                            <span style={{ fontSize: '11px', color: '#666660' }}>
+                              score {(entity.score * 100).toFixed(0)}%
+                            </span>
+                          )}
                         </div>
 
                         {/* Badge estado */}

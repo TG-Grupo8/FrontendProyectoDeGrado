@@ -7,6 +7,7 @@ export interface ValidatedEntity {
   id: string
   name: string
   type: 'plant' | 'compound' | 'protein' | 'disease'
+  score?: number
   state: EntityState
 }
 
@@ -30,13 +31,80 @@ interface ValidationContextValue {
   setEntities: (e: ValidatedEntity[]) => void
   setCompoundRelations: (r: ValidatedRelation[]) => void
   setDiseaseRelations: (r: ValidatedRelation[]) => void
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  loadFromPayload: (jobId: string, payload: any) => void
+  loadFromPayload: (jobId: string, payload: GraphPayload | PipelineResultPayload) => void
   buildAcceptedGraph: () => GraphPayload
   reset: () => void
 }
 
 const ValidationContext = createContext<ValidationContextValue | null>(null)
+
+interface PipelineResultPayload {
+  nlp?: {
+    plant?: { name?: string | null }
+    plants?: { plant?: string }[]
+    chemicals?: { compound?: string; score?: number }[]
+    targets?: { target?: string; score?: number }[]
+    diseases?: { disease?: string; score?: number }[]
+    relations?: {
+      chemicalTarget?: { compound?: string; target?: string }[]
+      targetDisease?: { protein?: string; disease?: string }[]
+    }
+  }
+}
+
+function uniqueEntities<T>(
+  items: T[],
+  nameOf: (item: T) => string | null | undefined,
+  scoreOf: (item: T) => number | undefined,
+) {
+  const byName = new Map<string, { name: string; score?: number }>()
+  for (const item of items) {
+    const name = nameOf(item)?.trim()
+    if (!name) continue
+    const score = scoreOf(item)
+    const existing = byName.get(name)
+    if (!existing || (score ?? 0) > (existing.score ?? 0)) {
+      byName.set(name, { name, score })
+    }
+  }
+  return Array.from(byName.values())
+}
+
+function normalizePayload(payload: GraphPayload | PipelineResultPayload): GraphPayload {
+  if (!('nlp' in payload) || !payload.nlp) return payload as GraphPayload
+
+  const nlp = payload.nlp
+  const plants = uniqueEntities(
+    [...(nlp.plants ?? []), { plant: nlp.plant?.name ?? undefined }],
+    item => item.plant,
+    () => undefined,
+  )
+  const compounds = uniqueEntities(nlp.chemicals ?? [], item => item.compound, item => item.score)
+  const proteins = uniqueEntities(nlp.targets ?? [], item => item.target, item => item.score)
+  const diseases = uniqueEntities(nlp.diseases ?? [], item => item.disease, item => item.score)
+
+  return {
+    plants,
+    compounds,
+    proteins,
+    diseases,
+    plant_has_compound: [],
+    compound_interacts_with_protein: (nlp.relations?.chemicalTarget ?? [])
+      .filter(edge => edge.compound && edge.target)
+      .map(edge => ({
+        compound_name: edge.compound as string,
+        protein_name: edge.target as string,
+        confidence_score: 1,
+      })),
+    compound_associated_with_disease: (nlp.relations?.targetDisease ?? [])
+      .filter(edge => edge.protein && edge.disease)
+      .map(edge => ({
+        compound_name: edge.protein as string,
+        disease_name: edge.disease as string,
+        confidence_score: 1,
+      })),
+  }
+}
 
 export function ValidationProvider({ children }: { children: React.ReactNode }) {
   const [jobId, setJobId] = useState<string | null>(null)
@@ -44,48 +112,40 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
   const [compoundRelations, setCompoundRelations] = useState<ValidatedRelation[]>([])
   const [diseaseRelations, setDiseaseRelations] = useState<ValidatedRelation[]>([])
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const loadFromPayload = (id: string, p: any) => {
+  const loadFromPayload = (id: string, payload: GraphPayload | PipelineResultPayload) => {
     setJobId(id)
-
-    // Support raw pipeline result format (p.nlp.*) and GraphPayload format (p.plants/compounds/...)
-    const nlp = p.nlp ?? p
-    const plants: string[]    = nlp.plants    ? nlp.plants.map((x: any) => x.plant ?? x.name).filter(Boolean)    : (p.plants    ?? []).map((x: any) => x.name)
-    const compounds: string[] = nlp.chemicals ? nlp.chemicals.map((x: any) => x.compound ?? x.name).filter(Boolean) : (p.compounds  ?? []).map((x: any) => x.name)
-    const proteins: string[]  = nlp.targets   ? nlp.targets.map((x: any) => x.target ?? x.name).filter(Boolean)   : (p.proteins   ?? []).map((x: any) => x.name)
-    const diseases: string[]  = nlp.diseases  ? nlp.diseases.map((x: any) => x.disease ?? x.name).filter(Boolean)  : (p.diseases   ?? []).map((x: any) => x.name)
+    const p = normalizePayload(payload)
 
     const ents: ValidatedEntity[] = [
-      ...plants.map((name, i)    => ({ id: `plant-${i}`,    name, type: 'plant'    as const, state: 'pending' as const })),
-      ...compounds.map((name, i) => ({ id: `compound-${i}`, name, type: 'compound' as const, state: 'pending' as const })),
-      ...proteins.map((name, i)  => ({ id: `protein-${i}`,  name, type: 'protein'  as const, state: 'pending' as const })),
-      ...diseases.map((name, i)  => ({ id: `disease-${i}`,  name, type: 'disease'  as const, state: 'pending' as const })),
+      ...p.plants.map((n, i) => ({ id: `plant-${i}`, name: n.name, type: 'plant' as const, score: n.score, state: 'pending' as const })),
+      ...p.compounds.map((n, i) => ({ id: `compound-${i}`, name: n.name, type: 'compound' as const, score: n.score, state: 'pending' as const })),
+      ...p.proteins.map((n, i) => ({ id: `protein-${i}`, name: n.name, type: 'protein' as const, score: n.score, state: 'pending' as const })),
+      ...p.diseases.map((n, i) => ({ id: `disease-${i}`, name: n.name, type: 'disease' as const, score: n.score, state: 'pending' as const })),
     ]
     setEntities(ents)
 
-    const relations = nlp.relations ?? {}
     setCompoundRelations(
-      (relations.chemicalTarget ?? p.compound_interacts_with_protein ?? []).map((e: any, i: number) => ({
+      p.compound_interacts_with_protein.map((e, i) => ({
         id: `cp-${i}`,
-        source: e.compound ?? e.compound_name,
+        source: e.compound_name,
         sourceType: 'compound' as const,
-        target: e.target ?? e.protein_name,
+        target: e.protein_name,
         targetType: 'protein' as const,
         relation: 'INTERACTÚA',
-        confidence: e.confidence ?? e.confidence_score ?? 0,
+        confidence: e.confidence_score,
         state: 'pending' as const,
       })),
     )
 
     setDiseaseRelations(
-      (relations.targetDisease ?? p.compound_associated_with_disease ?? []).map((e: any, i: number) => ({
+      p.compound_associated_with_disease.map((e, i) => ({
         id: `cd-${i}`,
-        source: e.compound ?? e.compound_name,
+        source: e.compound_name,
         sourceType: 'compound' as const,
-        target: e.disease ?? e.disease_name,
+        target: e.disease_name,
         targetType: 'disease' as const,
         relation: 'ASOCIADA',
-        confidence: e.confidence ?? e.confidence_score ?? 0,
+        confidence: e.confidence_score,
         state: 'pending' as const,
       })),
     )

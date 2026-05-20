@@ -131,10 +131,10 @@ export interface JobListResponse {
 }
 
 export interface GraphPayload {
-  plants: { name: string }[]
-  compounds: { name: string }[]
-  proteins: { name: string }[]
-  diseases: { name: string }[]
+  plants: { name: string; score?: number }[]
+  compounds: { name: string; score?: number }[]
+  proteins: { name: string; score?: number }[]
+  diseases: { name: string; score?: number }[]
   plant_has_compound: { plant_name: string; compound_name: string; confidence_score: number }[]
   compound_interacts_with_protein: { compound_name: string; protein_name: string; confidence_score: number }[]
   compound_associated_with_disease: { compound_name: string; disease_name: string; confidence_score: number }[]
