@@ -88,7 +88,13 @@ function normalizePayload(payload: GraphPayload | PipelineResultPayload): GraphP
     compounds,
     proteins,
     diseases,
-    plant_has_compound: [],
+    plant_has_compound: plants.flatMap(plant =>
+      compounds.map(compound => ({
+        plant_name: plant.name,
+        compound_name: compound.name,
+        confidence_score: 1,
+      }))
+    ),
     compound_interacts_with_protein: (nlp.relations?.chemicalTarget ?? [])
       .filter(edge => edge.compound && edge.target)
       .map(edge => ({
@@ -164,12 +170,20 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
 
   const buildAcceptedGraph = (): GraphPayload => {
     const accepted = entities.filter(e => e.state === 'accepted')
+    const acceptedPlants = accepted.filter(e => e.type === 'plant')
+    const acceptedCompounds = accepted.filter(e => e.type === 'compound')
     return {
-      plants: accepted.filter(e => e.type === 'plant').map(e => ({ name: e.name })),
-      compounds: accepted.filter(e => e.type === 'compound').map(e => ({ name: e.name })),
+      plants: acceptedPlants.map(e => ({ name: e.name })),
+      compounds: acceptedCompounds.map(e => ({ name: e.name })),
       proteins: accepted.filter(e => e.type === 'protein').map(e => ({ name: e.name })),
       diseases: accepted.filter(e => e.type === 'disease').map(e => ({ name: e.name })),
-      plant_has_compound: [],
+      plant_has_compound: acceptedPlants.flatMap(plant =>
+        acceptedCompounds.map(compound => ({
+          plant_name: plant.name,
+          compound_name: compound.name,
+          confidence_score: 1,
+        }))
+      ),
       compound_interacts_with_protein: compoundRelations
         .filter(r => r.state === 'accepted')
         .map(r => ({ compound_name: r.source, protein_name: r.target, confidence_score: r.confidence })),

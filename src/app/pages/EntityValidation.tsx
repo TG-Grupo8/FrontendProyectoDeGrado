@@ -66,7 +66,12 @@ export function EntityValidation() {
   const visibleEntities = entities.filter(isVisibleByScore);
 
   const updateState = (id: string, state: ValidationState) => {
-    const next = entities.map(e => e.id === id ? { ...e, state } : e);
+    const entity = entities.find(e => e.id === id);
+    let next = entities.map(e => e.id === id ? { ...e, state } : e);
+    // Solo puede haber una planta aceptada: si se acepta una, rechazar las demás
+    if (entity?.type === 'plant' && state === 'accepted') {
+      next = next.map(e => e.type === 'plant' && e.id !== id ? { ...e, state: 'rejected' as ValidationState } : e);
+    }
     setEntities(next);
     setCtxEntities(next);
   };
@@ -154,6 +159,11 @@ export function EntityValidation() {
                     <span style={{ fontSize: '11px', color: '#888780' }}>
                       ({hasScoreFilter ? `${groupEntities.length}/${allGroupEntities.length}` : groupEntities.length})
                     </span>
+                    {group.type === 'plant' && (
+                      <span style={{ fontSize: '11px', color: '#BA7517', fontWeight: 600 }}>
+                        — Únicamente se puede escoger una planta válida
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     {hasScoreFilter && (
@@ -175,10 +185,12 @@ export function EntityValidation() {
                         />
                       </div>
                     )}
-                    <button onClick={() => acceptAll(group.type)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', backgroundColor: '#E1F5EE', color: '#085041', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
-                      <Check size={11} /> Aceptar todos
-                    </button>
+                    {group.type !== 'plant' && (
+                      <button onClick={() => acceptAll(group.type)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', backgroundColor: '#E1F5EE', color: '#085041', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                        <Check size={11} /> Aceptar todos
+                      </button>
+                    )}
                     <button onClick={() => rejectAll(group.type)}
                       style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', backgroundColor: '#FAECE7', color: '#D85A30', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
                       <X size={11} /> Rechazar todos

@@ -106,10 +106,11 @@ export function KnowledgeGraph() {
         const positioned = positionNodes(allEntities);
         if (!cancelled) setNodes(positioned);
 
-        // Load neighborhoods from plants (depth=2) and compounds (depth=1) to get all edge types
+        // Load neighborhoods from plants (depth=2), compounds (depth=1), and proteins (depth=1) to get all edge types
         const neighborResults = await Promise.allSettled([
           ...plantRes.items.map(p => graphApi.neighbors('plant', p.name, 2)),
           ...compoundRes.items.map(c => graphApi.neighbors('compound', c.name, 1)),
+          ...proteinRes.items.map(p => graphApi.neighbors('protein', p.name, 1)),
         ]);
 
         if (cancelled) return;
