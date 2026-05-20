@@ -30,7 +30,8 @@ interface ValidationContextValue {
   setEntities: (e: ValidatedEntity[]) => void
   setCompoundRelations: (r: ValidatedRelation[]) => void
   setDiseaseRelations: (r: ValidatedRelation[]) => void
-  loadFromPayload: (jobId: string, payload: GraphPayload) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  loadFromPayload: (jobId: string, payload: any) => void
   buildAcceptedGraph: () => GraphPayload
   reset: () => void
 }
@@ -43,39 +44,48 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
   const [compoundRelations, setCompoundRelations] = useState<ValidatedRelation[]>([])
   const [diseaseRelations, setDiseaseRelations] = useState<ValidatedRelation[]>([])
 
-  const loadFromPayload = (id: string, p: GraphPayload) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const loadFromPayload = (id: string, p: any) => {
     setJobId(id)
 
+    // Support raw pipeline result format (p.nlp.*) and GraphPayload format (p.plants/compounds/...)
+    const nlp = p.nlp ?? p
+    const plants: string[]    = nlp.plants    ? nlp.plants.map((x: any) => x.plant ?? x.name).filter(Boolean)    : (p.plants    ?? []).map((x: any) => x.name)
+    const compounds: string[] = nlp.chemicals ? nlp.chemicals.map((x: any) => x.compound ?? x.name).filter(Boolean) : (p.compounds  ?? []).map((x: any) => x.name)
+    const proteins: string[]  = nlp.targets   ? nlp.targets.map((x: any) => x.target ?? x.name).filter(Boolean)   : (p.proteins   ?? []).map((x: any) => x.name)
+    const diseases: string[]  = nlp.diseases  ? nlp.diseases.map((x: any) => x.disease ?? x.name).filter(Boolean)  : (p.diseases   ?? []).map((x: any) => x.name)
+
     const ents: ValidatedEntity[] = [
-      ...p.plants.map((n, i) => ({ id: `plant-${i}`, name: n.name, type: 'plant' as const, state: 'pending' as const })),
-      ...p.compounds.map((n, i) => ({ id: `compound-${i}`, name: n.name, type: 'compound' as const, state: 'pending' as const })),
-      ...p.proteins.map((n, i) => ({ id: `protein-${i}`, name: n.name, type: 'protein' as const, state: 'pending' as const })),
-      ...p.diseases.map((n, i) => ({ id: `disease-${i}`, name: n.name, type: 'disease' as const, state: 'pending' as const })),
+      ...plants.map((name, i)    => ({ id: `plant-${i}`,    name, type: 'plant'    as const, state: 'pending' as const })),
+      ...compounds.map((name, i) => ({ id: `compound-${i}`, name, type: 'compound' as const, state: 'pending' as const })),
+      ...proteins.map((name, i)  => ({ id: `protein-${i}`,  name, type: 'protein'  as const, state: 'pending' as const })),
+      ...diseases.map((name, i)  => ({ id: `disease-${i}`,  name, type: 'disease'  as const, state: 'pending' as const })),
     ]
     setEntities(ents)
 
+    const relations = nlp.relations ?? {}
     setCompoundRelations(
-      p.compound_interacts_with_protein.map((e, i) => ({
+      (relations.chemicalTarget ?? p.compound_interacts_with_protein ?? []).map((e: any, i: number) => ({
         id: `cp-${i}`,
-        source: e.compound_name,
+        source: e.compound ?? e.compound_name,
         sourceType: 'compound' as const,
-        target: e.protein_name,
+        target: e.target ?? e.protein_name,
         targetType: 'protein' as const,
         relation: 'INTERACTÚA',
-        confidence: e.confidence_score,
+        confidence: e.confidence ?? e.confidence_score ?? 0,
         state: 'pending' as const,
       })),
     )
 
     setDiseaseRelations(
-      p.compound_associated_with_disease.map((e, i) => ({
+      (relations.targetDisease ?? p.compound_associated_with_disease ?? []).map((e: any, i: number) => ({
         id: `cd-${i}`,
-        source: e.compound_name,
+        source: e.compound ?? e.compound_name,
         sourceType: 'compound' as const,
-        target: e.disease_name,
+        target: e.disease ?? e.disease_name,
         targetType: 'disease' as const,
         relation: 'ASOCIADA',
-        confidence: e.confidence_score,
+        confidence: e.confidence ?? e.confidence_score ?? 0,
         state: 'pending' as const,
       })),
     )

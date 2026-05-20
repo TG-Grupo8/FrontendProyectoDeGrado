@@ -59,7 +59,7 @@ export const authApi = {
 
 export interface DocumentResponse {
   id: string
-  filename: string
+  original_filename: string
   doi: string | null
   title: string | null
   authors: string | null
