@@ -87,10 +87,10 @@ export function KnowledgeGraph() {
       setLoading(true);
       try {
         const [plantRes, compoundRes, proteinRes, diseaseRes] = await Promise.all([
-          graphApi.entities('plant',    undefined, 15),
-          graphApi.entities('compound', undefined, 30),
-          graphApi.entities('protein',  undefined, 25),
-          graphApi.entities('disease',  undefined, 10),
+          graphApi.entities('plant',    undefined, 100),
+          graphApi.entities('compound', undefined, 200),
+          graphApi.entities('protein',  undefined, 100),
+          graphApi.entities('disease',  undefined, 100),
         ]);
 
         if (cancelled) return;
