@@ -105,13 +105,11 @@ export function KnowledgeGraph() {
         const positioned = positionNodes(allEntities);
         if (!cancelled) setNodes(positioned);
 
-        // Load neighborhoods for first 5 plants to get edges
-        const plants = plantRes.items.slice(0, 5);
-        if (plants.length === 0) { if (!cancelled) setLoading(false); return; }
-
-        const neighborResults = await Promise.allSettled(
-          plants.map(p => graphApi.neighbors('plant', p.name, 1))
-        );
+        // Load neighborhoods from plants (depth=2) and compounds (depth=1) to get all edge types
+        const neighborResults = await Promise.allSettled([
+          ...plantRes.items.map(p => graphApi.neighbors('plant', p.name, 2)),
+          ...compoundRes.items.map(c => graphApi.neighbors('compound', c.name, 1)),
+        ]);
 
         if (cancelled) return;
 
@@ -121,7 +119,7 @@ export function KnowledgeGraph() {
         for (const result of neighborResults) {
           if (result.status === 'rejected') continue;
           for (const e of result.value.edges) {
-            const key = `${e.from_name}→${e.to_name}`;
+            const key = `${e.from_name}→${e.relation_type}→${e.to_name}`;
             if (edgeSet.has(key)) continue;
             edgeSet.add(key);
             newEdges.push({
