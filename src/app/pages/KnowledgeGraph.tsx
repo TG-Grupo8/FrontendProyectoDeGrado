@@ -23,6 +23,7 @@ const RELATION_COLORS: Record<string, string> = {
   PLANT_HAS_COMPOUND:                '#1D9E75',
   COMPOUND_INTERACTS_WITH_PROTEIN:   '#7F77DD',
   COMPOUND_ASSOCIATED_WITH_DISEASE:  '#D85A30',
+  PROTEIN_ASSOCIATED_WITH_DISEASE:   '#B03A8C',
 };
 
 const NODE_COLORS: Record<EntityType, { fill: string; stroke: string; text: string }> = {
@@ -491,6 +492,7 @@ export function KnowledgeGraph() {
                 { label: 'Planta → Compuesto',          color: '#1D9E75' },
                 { label: 'Compuesto → Proteína',         color: '#7F77DD' },
                 { label: 'Compuesto → Enfermedad',       color: '#D85A30' },
+                { label: 'Proteína → Enfermedad',        color: '#B03A8C' },
               ] as const).map(({ label, color }) => (
                 <div key={label} className="flex items-center gap-2">
                   <div style={{ width: '24px', height: '2px', backgroundColor: color }} />

@@ -138,6 +138,7 @@ export interface GraphPayload {
   plant_has_compound: { plant_name: string; compound_name: string; confidence_score: number }[]
   compound_interacts_with_protein: { compound_name: string; protein_name: string; confidence_score: number }[]
   compound_associated_with_disease: { compound_name: string; disease_name: string; confidence_score: number }[]
+  protein_associated_with_disease: { protein_name: string; disease_name: string; confidence_score: number }[]
 }
 
 export const jobsApi = {
