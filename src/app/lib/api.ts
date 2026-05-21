@@ -210,6 +210,22 @@ export interface SourceGraphResponse {
   edges: GraphEdgeResponse[]
 }
 
+export interface DocumentSource {
+  job_id: string
+  document_id: string
+  title: string | null
+  original_filename: string
+  doi: string | null
+  authors: string | null
+  publication_year: number | null
+}
+
+export interface NodeSourcesResponse {
+  node_type: string
+  name: string
+  sources: DocumentSource[]
+}
+
 export const graphApi = {
   entities: (type?: string, name?: string, limit = 100, offset = 0) => {
     const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) })
@@ -227,6 +243,12 @@ export const graphApi = {
   bySource: (sourceId: string) =>
     request<SourceGraphResponse>(
       `/graph/sources/${sourceId}`,
+      { headers: authHeaders() },
+    ),
+
+  nodeSources: (nodeType: string, name: string) =>
+    request<NodeSourcesResponse>(
+      `/graph/entities/${nodeType}/${encodeURIComponent(name)}/sources`,
       { headers: authHeaders() },
     ),
 }
