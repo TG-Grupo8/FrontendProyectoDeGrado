@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { TopBar } from '../components/TopBar';
 import { EntityTag, EntityType } from '../components/EntityTag';
-import { Check, X, ChevronLeft, CheckCircle, Download } from 'lucide-react';
+import { Check, X, ChevronLeft, CheckCircle, Download, Quote } from 'lucide-react';
 import { useValidation } from '../context/ValidationContext';
 import { jobsApi } from '../lib/api';
 
@@ -19,6 +19,7 @@ interface Relation {
   targetType: ConcreteEntityType;
   confidence: number;
   state: ValidationState;
+  evidence?: string;
 }
 
 const relationColors: Record<string, string> = {
@@ -133,44 +134,60 @@ export function DiseaseRelations() {
               const border   = rel.state === 'accepted' ? '#C8EDE1' : rel.state === 'rejected' ? '#F5C9BB' : '#F5F5F3';
               return (
                 <div key={rel.id} style={{
-                  display: 'flex', alignItems: 'center', gap: '16px',
-                  padding: '14px 20px', backgroundColor: bgColor,
+                  backgroundColor: bgColor,
                   borderBottom: idx < relations.length - 1 ? `1px solid ${border}` : 'none',
                   transition: 'background-color 0.2s',
+                  padding: '14px 20px',
                 }}>
-                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                    <button onClick={() => updateState(rel.id, rel.state === 'accepted' ? 'pending' : 'accepted')}
-                      style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', cursor: 'pointer', backgroundColor: rel.state === 'accepted' ? '#1D9E75' : '#F0F0EE', color: rel.state === 'accepted' ? '#FFFFFF' : '#AAAAAA', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
-                      <Check size={14} />
-                    </button>
-                    <button onClick={() => updateState(rel.id, rel.state === 'rejected' ? 'pending' : 'rejected')}
-                      style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', cursor: 'pointer', backgroundColor: rel.state === 'rejected' ? '#D85A30' : '#F0F0EE', color: rel.state === 'rejected' ? '#FFFFFF' : '#AAAAAA', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
-                      <X size={14} />
-                    </button>
-                  </div>
-
-                  <div className="flex-1 flex items-center gap-3 flex-wrap">
-                    <EntityTag type={rel.sourceType} label={rel.source} size="sm" showDot={false} />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <div style={{ width: '20px', height: '1px', backgroundColor: '#D0D0CC' }} />
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: relColor, backgroundColor: `${relColor}18`, padding: '2px 8px', borderRadius: '4px', border: `1px solid ${relColor}30` }}>
-                        {rel.relation}
-                      </span>
-                      <div style={{ width: '20px', height: '1px', backgroundColor: '#D0D0CC' }} />
+                  {/* Fila principal */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                      <button onClick={() => updateState(rel.id, rel.state === 'accepted' ? 'pending' : 'accepted')}
+                        style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', cursor: 'pointer', backgroundColor: rel.state === 'accepted' ? '#1D9E75' : '#F0F0EE', color: rel.state === 'accepted' ? '#FFFFFF' : '#AAAAAA', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
+                        <Check size={14} />
+                      </button>
+                      <button onClick={() => updateState(rel.id, rel.state === 'rejected' ? 'pending' : 'rejected')}
+                        style={{ width: '28px', height: '28px', borderRadius: '6px', border: 'none', cursor: 'pointer', backgroundColor: rel.state === 'rejected' ? '#D85A30' : '#F0F0EE', color: rel.state === 'rejected' ? '#FFFFFF' : '#AAAAAA', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
+                        <X size={14} />
+                      </button>
                     </div>
-                    <EntityTag type={rel.targetType} label={rel.target} size="sm" showDot={false} />
-                    <span style={{ fontSize: '10px', color: '#AAAAAA', fontFamily: 'monospace' }}>
-                      {(rel.confidence * 100).toFixed(0)}% confianza
+
+                    <div className="flex-1 flex items-center gap-3 flex-wrap">
+                      <EntityTag type={rel.sourceType} label={rel.source} size="sm" showDot={false} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '20px', height: '1px', backgroundColor: '#D0D0CC' }} />
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: relColor, backgroundColor: `${relColor}18`, padding: '2px 8px', borderRadius: '4px', border: `1px solid ${relColor}30` }}>
+                          {rel.relation}
+                        </span>
+                        <div style={{ width: '20px', height: '1px', backgroundColor: '#D0D0CC' }} />
+                      </div>
+                      <EntityTag type={rel.targetType} label={rel.target} size="sm" showDot={false} />
+                      <span style={{ fontSize: '10px', color: '#AAAAAA', fontFamily: 'monospace' }}>
+                        {(rel.confidence * 100).toFixed(0)}% confianza
+                      </span>
+                    </div>
+
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', flexShrink: 0,
+                      backgroundColor: rel.state === 'accepted' ? '#E1F5EE' : rel.state === 'rejected' ? '#FAECE7' : '#F0F0EE',
+                      color: rel.state === 'accepted' ? '#085041' : rel.state === 'rejected' ? '#D85A30' : '#AAAAAA',
+                    }}>
+                      {rel.state === 'accepted' ? 'Aceptada' : rel.state === 'rejected' ? 'Rechazada' : 'Pendiente'}
                     </span>
                   </div>
 
-                  <span style={{
-                    fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', flexShrink: 0,
-                    backgroundColor: rel.state === 'accepted' ? '#E1F5EE' : rel.state === 'rejected' ? '#FAECE7' : '#F0F0EE',
-                    color: rel.state === 'accepted' ? '#085041' : rel.state === 'rejected' ? '#D85A30' : '#AAAAAA',
-                  }}>
-                    {rel.state === 'accepted' ? 'Aceptada' : rel.state === 'rejected' ? 'Rechazada' : 'Pendiente'}
-                  </span>
+                  {/* Fragmento de texto (siempre visible) */}
+                  {rel.evidence && (
+                    <div style={{ marginTop: '10px', marginLeft: '68px', padding: '10px 14px', backgroundColor: '#F7F9FF', border: '1px solid #C7D9F8', borderLeft: '3px solid #185FA5', borderRadius: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px' }}>
+                        <Quote size={11} color="#185FA5" />
+                        <span style={{ fontSize: '10px', fontWeight: 700, color: '#185FA5', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fragmento del artículo</span>
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#444441', lineHeight: '1.6', margin: 0, fontStyle: 'italic' }}>
+                        "{rel.evidence}"
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })}

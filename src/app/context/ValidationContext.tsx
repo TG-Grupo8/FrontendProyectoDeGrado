@@ -20,6 +20,7 @@ export interface ValidatedRelation {
   relation: string
   confidence: number
   state: EntityState
+  evidence?: string
 }
 
 interface ValidationContextValue {
@@ -46,8 +47,8 @@ interface PipelineResultPayload {
     targets?: { target?: string; score?: number }[]
     diseases?: { disease?: string; score?: number }[]
     relations?: {
-      chemicalTarget?: { compound?: string; target?: string }[]
-      targetDisease?: { protein?: string; disease?: string }[]
+      chemicalTarget?: { compound?: string; target?: string; phrase?: string }[]
+      targetDisease?: { protein?: string; disease?: string; phrase?: string }[]
     }
   }
 }
@@ -131,6 +132,23 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
     ]
     setEntities(ents)
 
+    // Build a phrase lookup from the raw pipeline payload (if available)
+    const rawNlp = ('nlp' in payload && payload.nlp) ? payload.nlp as PipelineResultPayload['nlp'] : null
+    const chemPhrases = new Map<string, string>()
+    const disPhrases  = new Map<string, string>()
+    if (rawNlp?.relations?.chemicalTarget) {
+      for (const r of rawNlp.relations.chemicalTarget) {
+        if (r.compound && r.target && r.phrase)
+          chemPhrases.set(`${r.compound}||${r.target}`, r.phrase)
+      }
+    }
+    if (rawNlp?.relations?.targetDisease) {
+      for (const r of rawNlp.relations.targetDisease) {
+        if (r.protein && r.disease && r.phrase)
+          disPhrases.set(`${r.protein}||${r.disease}`, r.phrase)
+      }
+    }
+
     setCompoundRelations(
       p.compound_interacts_with_protein.map((e, i) => ({
         id: `cp-${i}`,
@@ -141,6 +159,7 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
         relation: 'INTERACTÚA',
         confidence: e.confidence_score,
         state: 'pending' as const,
+        evidence: chemPhrases.get(`${e.compound_name}||${e.protein_name}`),
       })),
     )
 
@@ -164,6 +183,7 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
         relation: 'ASOCIADA',
         confidence: e.confidence_score,
         state: 'pending' as const,
+        evidence: disPhrases.get(`${e.protein_name}||${e.disease_name}`),
       })),
     ])
   }

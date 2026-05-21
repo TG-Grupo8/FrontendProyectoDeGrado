@@ -82,29 +82,23 @@ export function DataExplorer() {
     setCurrentPage(1);
 
     if (relKey === 'planta-enfermedad') {
-      // The KnowledgeGraph shows plant→disease paths as plant→compound→disease.
-      // Depth=2 from a plant only finds diseases if the SAME compound connects
-      // both that plant and a disease — which is often not the case in practice.
-      // Pivot through compounds instead: query every compound at depth=1 to find
-      // which plants AND diseases share a compound, then build the plant→disease map.
-      graphApi.entities('compound', undefined, 200)
+      // Real path in Neo4j: Plant→Compound→Protein→Disease (3 hops).
+      // COMPOUND_ASSOCIATED_WITH_DISEASE edges don't exist in this graph.
+      // Pivot through proteins: depth=2 from a protein reaches
+      //   - diseases at depth=1 (PROTEIN_ASSOCIATED_WITH_DISEASE)
+      //   - plants at depth=2 (Protein←Compound←Plant, undirected traversal)
+      graphApi.entities('protein', undefined, 200)
         .then(res => {
           if (cancelled) return;
           return Promise.all(
-            res.items.map(c =>
-              graphApi.neighbors('compound', c.name, 1)
+            res.items.map(pr =>
+              graphApi.neighbors('protein', pr.name, 2)
                 .then(nbr => {
-                  // PLANT_HAS_COMPOUND: Plant→Compound → plant is from_name
-                  const plants = nbr.edges
-                    .filter(e => e.relation_type === 'PLANT_HAS_COMPOUND')
-                    .map(e => e.from_name);
-                  // COMPOUND_ASSOCIATED_WITH_DISEASE: Compound→Disease → disease is to_name
-                  const diseases = nbr.edges
-                    .filter(e => e.relation_type === 'COMPOUND_ASSOCIATED_WITH_DISEASE')
-                    .map(e => e.to_name);
+                  const plants   = nbr.nodes.filter(n => n.node_type === 'plant').map(n => n.name);
+                  const diseases = nbr.nodes.filter(n => n.node_type === 'disease').map(n => n.name);
                   const articles = new Set(
                     nbr.edges
-                      .filter(e => e.relation_type === 'COMPOUND_ASSOCIATED_WITH_DISEASE')
+                      .filter(e => e.relation_type === 'PROTEIN_ASSOCIATED_WITH_DISEASE')
                       .map(e => e.source_id).filter(Boolean)
                   ).size;
                   return { plants, diseases, articles };
