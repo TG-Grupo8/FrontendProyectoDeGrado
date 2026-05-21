@@ -88,7 +88,13 @@ function normalizePayload(payload: GraphPayload | PipelineResultPayload): GraphP
     compounds,
     proteins,
     diseases,
-    plant_has_compound: [],
+    plant_has_compound: plants.flatMap(plant =>
+      compounds.map(compound => ({
+        plant_name: plant.name,
+        compound_name: compound.name,
+        confidence_score: 1,
+      }))
+    ),
     compound_interacts_with_protein: (nlp.relations?.chemicalTarget ?? [])
       .filter(edge => edge.compound && edge.target)
       .map(edge => ({
@@ -96,10 +102,11 @@ function normalizePayload(payload: GraphPayload | PipelineResultPayload): GraphP
         protein_name: edge.target as string,
         confidence_score: 1,
       })),
-    compound_associated_with_disease: (nlp.relations?.targetDisease ?? [])
+    compound_associated_with_disease: [],
+    protein_associated_with_disease: (nlp.relations?.targetDisease ?? [])
       .filter(edge => edge.protein && edge.disease)
       .map(edge => ({
-        compound_name: edge.protein as string,
+        protein_name: edge.protein as string,
         disease_name: edge.disease as string,
         confidence_score: 1,
       })),
@@ -137,10 +144,20 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
       })),
     )
 
-    setDiseaseRelations(
-      p.compound_associated_with_disease.map((e, i) => ({
+    setDiseaseRelations([
+      ...p.compound_associated_with_disease.map((e, i) => ({
         id: `cd-${i}`,
         source: e.compound_name,
+        sourceType: 'compound' as const,
+        target: e.disease_name,
+        targetType: 'disease' as const,
+        relation: 'ASOCIADA',
+        confidence: e.confidence_score,
+        state: 'pending' as const,
+      })),
+      ...p.protein_associated_with_disease.map((e, i) => ({
+        id: `pd-${i}`,
+        source: e.protein_name,
         sourceType: 'protein' as const,
         target: e.disease_name,
         targetType: 'disease' as const,
@@ -148,23 +165,34 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
         confidence: e.confidence_score,
         state: 'pending' as const,
       })),
-    )
+    ])
   }
 
   const buildAcceptedGraph = (): GraphPayload => {
     const accepted = entities.filter(e => e.state === 'accepted')
+    const acceptedPlants = accepted.filter(e => e.type === 'plant')
+    const acceptedCompounds = accepted.filter(e => e.type === 'compound')
     return {
-      plants: accepted.filter(e => e.type === 'plant').map(e => ({ name: e.name })),
-      compounds: accepted.filter(e => e.type === 'compound').map(e => ({ name: e.name })),
+      plants: acceptedPlants.map(e => ({ name: e.name })),
+      compounds: acceptedCompounds.map(e => ({ name: e.name })),
       proteins: accepted.filter(e => e.type === 'protein').map(e => ({ name: e.name })),
       diseases: accepted.filter(e => e.type === 'disease').map(e => ({ name: e.name })),
-      plant_has_compound: [],
+      plant_has_compound: acceptedPlants.flatMap(plant =>
+        acceptedCompounds.map(compound => ({
+          plant_name: plant.name,
+          compound_name: compound.name,
+          confidence_score: 1,
+        }))
+      ),
       compound_interacts_with_protein: compoundRelations
         .filter(r => r.state === 'accepted')
         .map(r => ({ compound_name: r.source, protein_name: r.target, confidence_score: r.confidence })),
       compound_associated_with_disease: diseaseRelations
-        .filter(r => r.state === 'accepted')
+        .filter(r => r.state === 'accepted' && r.sourceType === 'compound')
         .map(r => ({ compound_name: r.source, disease_name: r.target, confidence_score: r.confidence })),
+      protein_associated_with_disease: diseaseRelations
+        .filter(r => r.state === 'accepted' && r.sourceType === 'protein')
+        .map(r => ({ protein_name: r.source, disease_name: r.target, confidence_score: r.confidence })),
     }
   }
 

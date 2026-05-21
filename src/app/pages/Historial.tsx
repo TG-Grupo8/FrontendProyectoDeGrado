@@ -50,8 +50,8 @@ export function Historial() {
           return {
             id: j.id,
             jobId: j.id,
-            name: doc?.filename ?? j.document_id.slice(0, 8),
-            title: doc?.title ?? doc?.filename ?? 'Sin título',
+            name: doc?.original_filename ?? j.document_id.slice(0, 8),
+            title: doc?.title ?? doc?.original_filename ?? 'Sin título',
             date: j.created_at.slice(0, 10),
             entities: 0,
             relations: 0,

@@ -23,6 +23,7 @@ const RELATION_COLORS: Record<string, string> = {
   PLANT_HAS_COMPOUND:                '#1D9E75',
   COMPOUND_INTERACTS_WITH_PROTEIN:   '#7F77DD',
   COMPOUND_ASSOCIATED_WITH_DISEASE:  '#D85A30',
+  PROTEIN_ASSOCIATED_WITH_DISEASE:   '#B03A8C',
 };
 
 const NODE_COLORS: Record<EntityType, { fill: string; stroke: string; text: string }> = {
@@ -87,10 +88,10 @@ export function KnowledgeGraph() {
       setLoading(true);
       try {
         const [plantRes, compoundRes, proteinRes, diseaseRes] = await Promise.all([
-          graphApi.entities('plant',    undefined, 15),
-          graphApi.entities('compound', undefined, 30),
-          graphApi.entities('protein',  undefined, 25),
-          graphApi.entities('disease',  undefined, 10),
+          graphApi.entities('plant',    undefined, 100),
+          graphApi.entities('compound', undefined, 200),
+          graphApi.entities('protein',  undefined, 100),
+          graphApi.entities('disease',  undefined, 100),
         ]);
 
         if (cancelled) return;
@@ -105,13 +106,12 @@ export function KnowledgeGraph() {
         const positioned = positionNodes(allEntities);
         if (!cancelled) setNodes(positioned);
 
-        // Load neighborhoods for first 5 plants to get edges
-        const plants = plantRes.items.slice(0, 5);
-        if (plants.length === 0) { if (!cancelled) setLoading(false); return; }
-
-        const neighborResults = await Promise.allSettled(
-          plants.map(p => graphApi.neighbors('plant', p.name, 1))
-        );
+        // Load neighborhoods from plants (depth=2), compounds (depth=1), and proteins (depth=1) to get all edge types
+        const neighborResults = await Promise.allSettled([
+          ...plantRes.items.map(p => graphApi.neighbors('plant', p.name, 2)),
+          ...compoundRes.items.map(c => graphApi.neighbors('compound', c.name, 1)),
+          ...proteinRes.items.map(p => graphApi.neighbors('protein', p.name, 1)),
+        ]);
 
         if (cancelled) return;
 
@@ -121,7 +121,7 @@ export function KnowledgeGraph() {
         for (const result of neighborResults) {
           if (result.status === 'rejected') continue;
           for (const e of result.value.edges) {
-            const key = `${e.from_name}→${e.to_name}`;
+            const key = `${e.from_name}→${e.relation_type}→${e.to_name}`;
             if (edgeSet.has(key)) continue;
             edgeSet.add(key);
             newEdges.push({
@@ -493,6 +493,7 @@ export function KnowledgeGraph() {
                 { label: 'Planta → Compuesto',          color: '#1D9E75' },
                 { label: 'Compuesto → Proteína',         color: '#7F77DD' },
                 { label: 'Compuesto → Enfermedad',       color: '#D85A30' },
+                { label: 'Proteína → Enfermedad',        color: '#B03A8C' },
               ] as const).map(({ label, color }) => (
                 <div key={label} className="flex items-center gap-2">
                   <div style={{ width: '24px', height: '2px', backgroundColor: color }} />
