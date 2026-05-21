@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TopBar } from '../components/TopBar';
 import { EntityTag, EntityType } from '../components/EntityTag';
-import { ZoomIn, ZoomOut, Maximize2, Filter, Circle, GitBranch, Layers, ChevronRight, ChevronLeft } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Filter, Circle, GitBranch, Layers, ChevronRight, ChevronLeft, Download } from 'lucide-react';
 import { graphApi, type DocumentSource } from '../lib/api';
 
 interface GraphNode {
@@ -233,8 +233,9 @@ export function KnowledgeGraph() {
   const [nodes, setNodes]     = useState<GraphNode[]>([]);
   const [edges, setEdges]     = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nodeSources, setNodeSources]       = useState<DocumentSource[]>([]);
-  const [loadingSources, setLoadingSources] = useState(false);
+  const [nodeSources, setNodeSources]         = useState<DocumentSource[]>([]);
+  const [loadingSources, setLoadingSources]   = useState(false);
+  const [exporting, setExporting]             = useState(false);
 
   // ── Auto-fit view to all nodes ──────────────────────────────────────────
   const fitView = useCallback((nodeList: GraphNode[]) => {
@@ -441,8 +442,36 @@ export function KnowledgeGraph() {
       <TopBar
         title="Grafo de conocimiento"
         subtitle="Relaciones entre entidades biomédicas extraídas"
-        showExport={true}
         showProcess={false}
+        exportButtons={
+          <button
+            disabled={exporting || nodes.length === 0}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const blob = await graphApi.exportCsv();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'knowledge_graph.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+              } finally {
+                setExporting(false);
+              }
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '6px 14px', borderRadius: '6px', border: '1px solid #D0D0CC',
+              backgroundColor: '#FFFFFF', color: '#444441', fontSize: '12px',
+              cursor: exporting || nodes.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: exporting || nodes.length === 0 ? 0.5 : 1,
+            }}
+          >
+            {exporting ? 'Exportando…' : 'Exportar CSV'}
+            <Download size={12} />
+          </button>
+        }
       />
 
       <div className="flex-1 flex overflow-hidden" style={{ backgroundColor: '#F4F4F2' }}>

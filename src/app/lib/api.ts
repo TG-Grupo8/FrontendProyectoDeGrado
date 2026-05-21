@@ -251,6 +251,12 @@ export const graphApi = {
       `/graph/entities/${nodeType}/${encodeURIComponent(name)}/sources`,
       { headers: authHeaders() },
     ),
+
+  exportCsv: async () => {
+    const res = await fetch(`${BASE}/graph/export/csv`, { headers: authHeaders() })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.blob()
+  },
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
