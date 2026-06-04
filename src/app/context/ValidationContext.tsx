@@ -47,8 +47,8 @@ interface PipelineResultPayload {
     targets?: { target?: string; score?: number }[]
     diseases?: { disease?: string; score?: number }[]
     relations?: {
-      chemicalTarget?: { compound?: string; target?: string; phrase?: string }[]
-      targetDisease?: { protein?: string; disease?: string; phrase?: string }[]
+      chemicalTarget?: { compound?: string; target?: string; verb?: string; phrase?: string }[]
+      targetDisease?: { protein?: string; disease?: string; verb?: string; phrase?: string }[]
     }
   }
 }
@@ -132,35 +132,38 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
     ]
     setEntities(ents)
 
-    // Build a phrase lookup from the raw pipeline payload (if available)
+    // Build an evidence lookup from the raw pipeline payload (if available)
     const rawNlp = ('nlp' in payload && payload.nlp) ? payload.nlp as PipelineResultPayload['nlp'] : null
-    const chemPhrases = new Map<string, string>()
-    const disPhrases  = new Map<string, string>()
+    const chemEvidence = new Map<string, { phrase?: string; verb?: string }>()
+    const disEvidence  = new Map<string, { phrase?: string; verb?: string }>()
     if (rawNlp?.relations?.chemicalTarget) {
       for (const r of rawNlp.relations.chemicalTarget) {
-        if (r.compound && r.target && r.phrase)
-          chemPhrases.set(`${r.compound}||${r.target}`, r.phrase)
+        if (r.compound && r.target && (r.phrase || r.verb))
+          chemEvidence.set(`${r.compound}||${r.target}`, { phrase: r.phrase, verb: r.verb })
       }
     }
     if (rawNlp?.relations?.targetDisease) {
       for (const r of rawNlp.relations.targetDisease) {
-        if (r.protein && r.disease && r.phrase)
-          disPhrases.set(`${r.protein}||${r.disease}`, r.phrase)
+        if (r.protein && r.disease && (r.phrase || r.verb))
+          disEvidence.set(`${r.protein}||${r.disease}`, { phrase: r.phrase, verb: r.verb })
       }
     }
 
     setCompoundRelations(
-      p.compound_interacts_with_protein.map((e, i) => ({
-        id: `cp-${i}`,
-        source: e.compound_name,
-        sourceType: 'compound' as const,
-        target: e.protein_name,
-        targetType: 'protein' as const,
-        relation: 'INTERACTÚA',
-        confidence: e.confidence_score,
-        state: 'pending' as const,
-        evidence: chemPhrases.get(`${e.compound_name}||${e.protein_name}`),
-      })),
+      p.compound_interacts_with_protein.map((e, i) => {
+        const evidence = chemEvidence.get(`${e.compound_name}||${e.protein_name}`)
+        return {
+          id: `cp-${i}`,
+          source: e.compound_name,
+          sourceType: 'compound' as const,
+          target: e.protein_name,
+          targetType: 'protein' as const,
+          relation: evidence?.verb ?? 'INTERACTÚA',
+          confidence: e.confidence_score,
+          state: 'pending' as const,
+          evidence: evidence?.phrase,
+        }
+      }),
     )
 
     setDiseaseRelations([
@@ -174,17 +177,20 @@ export function ValidationProvider({ children }: { children: React.ReactNode }) 
         confidence: e.confidence_score,
         state: 'pending' as const,
       })),
-      ...p.protein_associated_with_disease.map((e, i) => ({
-        id: `pd-${i}`,
-        source: e.protein_name,
-        sourceType: 'protein' as const,
-        target: e.disease_name,
-        targetType: 'disease' as const,
-        relation: 'ASOCIADA',
-        confidence: e.confidence_score,
-        state: 'pending' as const,
-        evidence: disPhrases.get(`${e.protein_name}||${e.disease_name}`),
-      })),
+      ...p.protein_associated_with_disease.map((e, i) => {
+        const evidence = disEvidence.get(`${e.protein_name}||${e.disease_name}`)
+        return {
+          id: `pd-${i}`,
+          source: e.protein_name,
+          sourceType: 'protein' as const,
+          target: e.disease_name,
+          targetType: 'disease' as const,
+          relation: evidence?.verb ?? 'ASOCIADA',
+          confidence: e.confidence_score,
+          state: 'pending' as const,
+          evidence: evidence?.phrase,
+        }
+      }),
     ])
   }
 

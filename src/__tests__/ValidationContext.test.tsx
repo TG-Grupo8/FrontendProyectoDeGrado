@@ -119,8 +119,8 @@ describe('loadFromPayload — formato legado (nlp)', () => {
       targets: [{ target: 'CB1', score: 0.7 }],
       diseases: [{ disease: 'Dolor crónico', score: 0.8 }],
       relations: {
-        chemicalTarget: [{ compound: 'THC', target: 'CB1' }],
-        targetDisease: [{ protein: 'CB1', disease: 'Dolor crónico' }],
+        chemicalTarget: [{ compound: 'THC', target: 'CB1', verb: 'inhibits', phrase: 'THC inhibits CB1 signaling.' }],
+        targetDisease: [{ protein: 'CB1', disease: 'Dolor crónico', verb: 'reduces', phrase: 'CB1 reduces Dolor crónico symptoms.' }],
       },
     },
   }
@@ -145,6 +145,13 @@ describe('loadFromPayload — formato legado (nlp)', () => {
     act(() => getCtx().loadFromPayload('j2', legacyPayload as never))
     expect(getCtx().compoundRelations).toHaveLength(1)
     expect(getCtx().compoundRelations[0].source).toBe('THC')
+  })
+
+  it('usa el verbo real del pipeline como etiqueta de relación', () => {
+    const getCtx = renderValidation()
+    act(() => getCtx().loadFromPayload('j2', legacyPayload as never))
+    expect(getCtx().compoundRelations[0].relation).toBe('inhibits')
+    expect(getCtx().diseaseRelations[0].relation).toBe('reduces')
   })
 })
 
